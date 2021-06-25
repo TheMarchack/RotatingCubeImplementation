@@ -2,14 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.rotatingcubeimplementation">
 
-    <!-- OpenCV
-    <uses-permission android:name="android.permission.CAMERA"/>
-    <uses-feature android:name="android.hardware.camera" android:required="false"/>
-    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
-    <uses-feature android:name="android.hardware.camera.front" android:required="false"/>
-    <uses-feature android:name="android.hardware.camera.front.autofocus" android:required="false"/>
-    -->
-
     <uses-feature android:glEsVersion="0x00020000" android:required="true" />
 
     <application
@@ -19,7 +11,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.NoActionBar">
-        <!-- android:theme="@style/Theme.RotatingCubeImplementation"> -->
+
         <activity
             android:name=".MainActivity"
             android:screenOrientation="nosensor">
@@ -29,5 +21,4 @@
             </intent-filter>
         </activity>
     </application>
-
 </manifest>

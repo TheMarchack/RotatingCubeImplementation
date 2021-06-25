@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.opengl.GLUtils;
@@ -57,12 +58,14 @@ public class OpenGLRenderer implements GLSurfaceView.Renderer {
     /** This will be used to pass in model color information. */
     private int mColorHandle;
 
-    /** This will be used to hold object texture */
-    public Canvas Map;
-    public Paint white;
+    /** These will be used to hold object textures */
+    public Canvas Overlay;
+    public Canvas Result;
+    public Paint paint;
     public static Bitmap bitmap;
-    public static Bitmap mutableBitmap;
-    public static Bitmap newBitmap;
+    public static Bitmap overlay;
+    public static Bitmap bitmapSum;
+
     /** This will be used to pass in the texture. */
     private int mTextureUniformHandle;
     /** This will be used to pass in model texture coordinate information. */
@@ -79,17 +82,23 @@ public class OpenGLRenderer implements GLSurfaceView.Renderer {
     /** This is a handle to our per-vertex cube shading program. */
     private int mPerVertexProgramHandle;
 
-    public float xAngle = 0;
-    public float yAngle = 0;
+    public float xAngle = -70; // X -70 and Y -16 centers initial rotation above Mediterranean
+    public float yAngle = -16;
     public float radius = 2f;
     public int sphereStep = 16;
     public float xMovement = 0;
     public float yMovement = 0;
     public int viewportHeight;
     public int viewportWidth;
+    public int pWidth = 1920;
+    public int pHeight = 960;
 
     // Position the eye in front of the origin.
     public final float[] eye = {0.0f, 0.0f, 5.0f};
+    // We are looking toward the distance
+    private final float[] look = {0.0f, 0.0f, -5.0f};
+    // Set our up vector. This is where our head would be pointing were we holding the camera.
+    private final float[] up = {0.0f, 1.0f, 0.0f};
 
     // Define the 3D object
 //     Cube Object = new Cube();
@@ -97,15 +106,13 @@ public class OpenGLRenderer implements GLSurfaceView.Renderer {
 
     OpenGLView mActivityContext;
 
-    /**
-     * Initialize the model data. */
+    /** Initialize the model data. */
     public OpenGLRenderer( OpenGLView surfaceView) {
         // Initialize the buffers.
         mActivityContext = surfaceView;
         mObjectPositions = Object.objectVertex;
         mObjectColors = Object.objectColor;
         mObjectTextures = Object.objectTexture;
-
     }
 
     protected String getVertexShader() {
@@ -153,15 +160,19 @@ public class OpenGLRenderer implements GLSurfaceView.Renderer {
         // Enable depth testing
         GLES20.glEnable(GLES20.GL_DEPTH_TEST);
 
-        // We are looking toward the distance
-        final float[] look = {0.0f, 0.0f, -0.5f};
-        // Set our up vector. This is where our head would be pointing were we holding the camera.
-        final float[] up = {0.0f, 1.0f, 0.0f};
+//        // Set the view matrix. This matrix can be said to represent the camera position.
+//        // NOTE: In OpenGL 1, a ModelView matrix is used, which is a combination of a model and
+//        // view matrix. In OpenGL 2, we can keep track of these matrices separately if we choose.
+//        Matrix.setLookAtM(mViewMatrix, 0, eye[0], eye[1], eye[2], look[0], look[1], look[2], up[0], up[1], up[2]);
+//
+//        // Invert mViewMatrix for ray calculations
+//        Matrix.invertM(mInverseViewMatrix, 0, mViewMatrix, 0);
 
-        // Set the view matrix. This matrix can be said to represent the camera position.
-        // NOTE: In OpenGL 1, a ModelView matrix is used, which is a combination of a model and
-        // view matrix. In OpenGL 2, we can keep track of these matrices separately if we choose.
-        Matrix.setLookAtM(mViewMatrix, 0, eye[0], eye[1], eye[2], look[0], look[1], look[2], up[0], up[1], up[2]);
+        // Previous section replaced by this function
+        calculateViewMatrix();
+
+        // Invert mViewMatrix for ray calculations
+        Matrix.invertM(mInverseViewMatrix, 0, mViewMatrix, 0);
 
         final String vertexShader = getVertexShader();
         final String fragmentShader = getFragmentShader();
@@ -171,10 +182,33 @@ public class OpenGLRenderer implements GLSurfaceView.Renderer {
 
         mPerVertexProgramHandle = createAndLinkProgram(vertexShaderHandle, fragmentShaderHandle,
                 new String[] {"a_Position",  "a_Color", "a_TexCoordinate"});
-
-        // Invert mViewMatrix for ray calculations
-        Matrix.invertM(mInverseViewMatrix, 0, mViewMatrix, 0);
     }
+
+
+    public void updateEyeAngle(float yAngle) {
+        // eye = {0.0f, 0.0f, 5.0f}
+        // look = {0.0f, 0.0f, -5.0f}
+        // up = {0.0f, 1.0f, 0.0f}
+        eye[1] = (float) Math.sin(yAngle * Math.PI / 180) * 5f;
+        eye[2] = (float) Math.cos(yAngle * Math.PI / 180) * 5f;
+        look[1] = (float) Math.sin(yAngle * Math.PI / 180) * -5.0f;
+        look[2] = (float) Math.cos(yAngle * Math.PI / 180) * -5.0f;
+        up[1] = (float) Math.cos(yAngle * Math.PI / 180);
+        up[2] = (float) Math.sin(yAngle * Math.PI / 180) * -1.0f;
+        calculateViewMatrix();
+    }
+
+
+    private void calculateViewMatrix() {
+        // Set the view matrix. This matrix can be said to represent the camera position.
+        // NOTE: In OpenGL 1, a ModelView matrix is used, which is a combination of a model and
+        // view matrix. In OpenGL 2, we can keep track of these matrices separately if we choose.
+        Matrix.setLookAtM(mViewMatrix, 0, eye[0], eye[1], eye[2], look[0], look[1], look[2], up[0], up[1], up[2]);
+
+//        // Invert mViewMatrix for ray calculations
+//        Matrix.invertM(mInverseViewMatrix, 0, mViewMatrix, 0);
+    }
+
 
     @Override
     public void onSurfaceChanged(GL10 glUnused, int width, int height) {
@@ -183,7 +217,6 @@ public class OpenGLRenderer implements GLSurfaceView.Renderer {
 
         // Set the OpenGL viewport to the same size as the surface.
         GLES20.glViewport(0, 0, width, height);
-
         // Calculate initial projection matrix
         calculateProjection(width, height, 1);
     }
@@ -208,11 +241,6 @@ public class OpenGLRenderer implements GLSurfaceView.Renderer {
     }
 
 
-//    public void cameraOrigin() {
-//
-//    }
-
-
     @Override
     public void onDrawFrame(GL10 gl) {
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
@@ -231,7 +259,7 @@ public class OpenGLRenderer implements GLSurfaceView.Renderer {
         // Draw the object
         float slowCoefficient = 0.93f;
         float verticalMovementRatio = 0.7f;
-        int maxAngle = 55;
+        int maxAngle = 45;
 
         Matrix.setIdentityM(mModelMatrix, 0);
         Matrix.translateM(mModelMatrix, 0, 0.0f, 0.0f, 0.0f);
@@ -249,25 +277,32 @@ public class OpenGLRenderer implements GLSurfaceView.Renderer {
         xAngle += xMovement;
         yAngle += yMovement * verticalMovementRatio;
 
-        // Restrict yAngle to +/- maxAngle in degrees
-        if (yAngle < -maxAngle) {
-            yAngle = -maxAngle;
-        } else if (yAngle > maxAngle) {
-            yAngle = maxAngle;
-        }
-        Matrix.rotateM(mModelMatrix, 0, -yAngle, 1.0f, 0.0f, 0.0f); // pitch
+        // Restrict yAngle to +/- maxAngle degrees
+        yAngle = Math.min(maxAngle, Math.max(-maxAngle, yAngle));
+        // Restrict xAngle to 0 - 360 degrees
+        xAngle = (xAngle + 360) % 360;
+
+        // Rotate Eye angle by yAngle
+        updateEyeAngle(-yAngle);
+
+        Matrix.rotateM(mModelMatrix, 0, 0, 1.0f, 0.0f, 0.0f); // pitch  // -yAngle
         Matrix.rotateM(mModelMatrix, 0, -xAngle, 0.0f, 1.0f, 0.0f); // roll
-//        MainActivity.getInstance().setText("y: " + String.valueOf(Math.round(yAngle * 100) / 100f) +
-//                                            ", x: " + String.valueOf(Math.round(xAngle * 100) / 100f));
+
+        // Put overlay Bitmap on map Bitmap
+        Rect rectangle = new Rect(0, 0, pWidth, pHeight);
+        Result.drawBitmap(bitmap, new Rect(0, 0, pWidth, pHeight), rectangle, null);
+        Result.drawBitmap(overlay, 0, 0, null);
 
         // Set the active texture unit
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        // Update existing texture|
+        GLUtils.texSubImage2D(GLES20.GL_TEXTURE_2D,0,0,0, bitmapSum);
         // Bind the texture to this unit.
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mTextureDataHandle);
         // Tell the texture uniform sampler to use this texture in the shader by binding to texture unit 0.
         GLES20.glUniform1i(mTextureUniformHandle, 0);
-        drawObject();
 
+        drawObject();
     }
 
     /**
@@ -406,13 +441,12 @@ public class OpenGLRenderer implements GLSurfaceView.Renderer {
             final BitmapFactory.Options options = new BitmapFactory.Options();
             options.inScaled = false;   // No pre-scaling
 
-            // Read in the resource
+            // Read in the resources and make them mutable (except original map)
             bitmap = BitmapFactory.decodeResource(mActivityContext2.getResources(), resourceId, options);
-            mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true);
-            // Initialize canvas and color
-//            newBitmap = BitmapFactory.decodeResource(mActivityContext2.getResources(), R.drawable.map_white, options);
-            Map = new Canvas(mutableBitmap);
-            white = new Paint();
+            overlay = Bitmap.createBitmap(pWidth, pHeight, Bitmap.Config.ARGB_8888);
+            overlay = overlay.copy(Bitmap.Config.ARGB_8888, true);
+            bitmapSum = Bitmap.createBitmap(pWidth, pHeight, Bitmap.Config.ARGB_8888);
+            bitmapSum = bitmapSum.copy(Bitmap.Config.ARGB_8888, true);
 
             GLES20.glGenTextures(1, textureHandle, 0);
 
@@ -423,11 +457,13 @@ public class OpenGLRenderer implements GLSurfaceView.Renderer {
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST);
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST);
 
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureHandle[0]);
-            // Load the bitmap into the bound texture.
-            GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0);
-            // Recycle the bitmap, since its data has been loaded into OpenGL.
-            bitmap.recycle();
+            // Load the bitmapSum into the bound texture.
+            GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmapSum, 0);
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+
+            Overlay = new Canvas(overlay);
+            Result = new Canvas(bitmapSum);
+            paint = new Paint();
         }
 
         if (textureHandle[0] == 0)
@@ -439,16 +475,10 @@ public class OpenGLRenderer implements GLSurfaceView.Renderer {
     }
 
 
-    private void updateTexture(Bitmap bitmap) {
-        GLUtils.texSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, 0, bitmap);
-    }
-
-
     public void drawPointOnBitmap(float x, float y) {
-        white.setStyle(Paint.Style.FILL);
-        white.setColor(Color.WHITE);
-        Map.drawCircle(x, y, 25, white);
-        updateTexture(newBitmap);
+        overlay.eraseColor(Color.TRANSPARENT);
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(Color.WHITE);
+        Overlay.drawCircle(x, y, 7, paint);
     }
-
 }

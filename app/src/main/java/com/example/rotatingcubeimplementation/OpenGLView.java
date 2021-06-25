@@ -34,13 +34,8 @@ public class OpenGLView extends GLSurfaceView {
     private void init() {
         setEGLContextClientVersion(2);
         setPreserveEGLContextOnPause(true);
-//        prepareMap();
         setRenderer(renderer = new OpenGLRenderer( this));
     }
-
-//    private void prepareMap() {
-//        Map img = new Map();
-//    }
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
@@ -95,31 +90,40 @@ public class OpenGLView extends GLSurfaceView {
             case MotionEvent.ACTION_UP: {
                 if (!movementDetected) { // Last finger up
                     try {
-                        float[] intersect = intersectionPoint(castRay(touchX, touchY), renderer.eye, renderer.radius);
+                        float angleX = renderer.xAngle - 90f; // compensation for texture shift
+                        float angleY = -renderer.yAngle;
 
+                        float angleXrad = (float) (angleX * Math.PI / 180);
+                        float angleYrad = (float) (angleY * Math.PI / 180);
+
+                        float[] intersect = intersectionPoint(castRay(touchX, touchY), renderer.eye, renderer.radius);
 //                        MainActivity.getInstance().setText("Point: " + String.valueOf(Math.round(intersect[0] * 100) / 100f) +
 //                                                                ", " + String.valueOf(Math.round(intersect[1] * 100) / 100f) +
 //                                                                ", " + String.valueOf(Math.round(intersect[2] * 100) / 100f));
+                        int touched = Float.compare(intersect[0], Float.NaN);
 
-                        float[] polar = getPolar(intersect[0], intersect[1], intersect[2]);
+                        float[] intersectRotated = rotatePoint(intersect, angleXrad, angleYrad);
 
-                        float angleY = -renderer.yAngle;
-                        float angleX = (renderer.xAngle % 360);
-
-                        float angleYrad = (float) (angleY * Math.PI / 180);
-                        float angleXrad = (float) (angleX * Math.PI / 180);
+                        float[] polar = getPolar(intersectRotated[0], intersectRotated[1], intersectRotated[2]);
 
                         polar[0] += angleXrad;
-                        polar[1] -= angleYrad;
+//                        polar[1] -= angleYrad; // Made redundant by rotatePoint() function
+                        // Restrict X to 0 - 2*PI radians
+                        polar[0] = (float) ((polar[0] + Math.PI * 2) % (Math.PI * 2));
+                        // Restrict Y to 0 - PI radians
+                        polar[1] = (float) Math.min(Math.PI / 2, Math.max(-Math.PI / 2, polar[1]));
 
-//                        MainActivity.getInstance().setText("X: " + String.valueOf(Math.round(angleXrad * 100) / 100f) +
-//                                ", Y: " + String.valueOf(Math.round(angleYrad * 100) / 100f));
-//
-                        MainActivity.getInstance().setText("p, t = " + String.valueOf(Math.round(polar[0] * 100) / 100f) +
-                                                                ", " + String.valueOf(Math.round(polar[1] * 100) / 100f));
+                        // Only draw point if not on poles
+                        if (polar[1] > -Math.PI / 2 + 0.3 && polar[1] < Math.PI / 2 - 0.4) {
+                            float[] mapLoc = new float[2];
+                            mapLoc[0] = (float) (polar[0] / (Math.PI * 2));
+                            mapLoc[1] = (float) ((polar[1] + Math.PI / 2) / Math.PI);
 
-                        renderer.drawPointOnBitmap(polar[0], polar[1]);
+                            renderer.drawPointOnBitmap(mapLoc[0] * renderer.pWidth, mapLoc[1] * renderer.pHeight);
+                        }
 
+                        // Show coordinates if clicked on sphere
+                        if (touched != 0) { showCoordinates(polar); }
 
                     } catch (InterruptedException e) {
                         e.printStackTrace();
@@ -129,24 +133,37 @@ public class OpenGLView extends GLSurfaceView {
             }
             break;
             default:
-                throw new IllegalStateException("Unexpected value: " + (action & MotionEvent.ACTION_MASK));
+                throw new IllegalStateException("Unexpected value: " + action); // (action & MotionEvent.ACTION_MASK));
         }
         return true;
     }
 
+    private void showCoordinates(float[] polar) {
+        float[] coordinates = new float[2];
+        coordinates[0] = Math.round((polar[0] - Math.PI) / Math.PI * 180 * 100f) / 100f;
+        coordinates[1] = Math.round(polar[1] / (Math.PI / 2) * 90 * 100f) / 100f;
+        String longitude = (coordinates[0] < 0) ? "°W " : "°E ";
+        String latitude = (coordinates[1] < 0) ? "°N " : "°S ";
 
-    private float[] intersectionPoint(float[] vector, float[] origin, float radius) {
-        float[] intersection = new float[3];
+        MainActivity.getInstance().setText(String.valueOf(Math.abs(coordinates[0])) + longitude + "; "
+                                         + String.valueOf(Math.abs(coordinates[1])) + latitude);
+    }
+
+
+    private float[] intersectionPoint(float[] vector, float[] eye, float radius) {
+        float[] origin = {0f, 0f, 5f};
+        float[] intersection = new float[4];
         float a, b, c, t;
 
         a = vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2];
-        b = origin[2] * vector[2] * 2;
-        c = origin[2]*origin[2] - radius*radius;
+        b = origin[0] * vector[0] * 2 + origin[1] * vector[1] * 2 + origin[2] * vector[2] * 2;
+        c = origin[0]*origin[0] + origin[1]*origin[1] + origin[2]*origin[2] - radius*radius;
 
         t = minRoot(a, b, c);
         intersection[0] = origin[0] + vector[0] * t;
         intersection[1] = origin[1] + vector[1] * t;
         intersection[2] = origin[2] + vector[2] * t;
+        intersection[3] = 1.0f;
         return intersection;
     }
 
@@ -178,10 +195,41 @@ public class OpenGLView extends GLSurfaceView {
         pointPosition[1] = (2.0f * posY) / renderer.viewportHeight - 1.0f;
         pointPosition[2] = -1.0f;
         pointPosition[3] = 1.0f;
+
+        // get touch ray line matrix
         float[] touchRay = multiplyMat4ByVec4(renderer.mInverseProjectionMatrix, pointPosition);
         touchRay[2] = -1.0f;
         touchRay[3] = 0.0f;
+
         return multiplyMat4ByVec4(renderer.mInverseViewMatrix, touchRay);
+    }
+
+
+    private float[] rotatePoint(float[] pointV4, float xAngle, float yAngle) {
+//        float cosX = (float) Math.cos(xAngle);
+//        float sinX = (float) Math.sin(xAngle);
+        float cosY = (float) Math.cos(yAngle);
+        float sinY = (float) Math.sin(yAngle);
+
+        float[] rotationMatrixY = {1, 0, 0, 0,
+                                   0, cosY, -sinY, 0,
+                                   0, sinY, cosY, 0,
+                                   0, 0, 0, 1};
+//        float[] rotationMatrix = {cos, -sin, 0, 0,
+//                                  sin, cos, 0, 0,
+//                                  0, 0, 1, 0,
+//                                  0, 0, 0, 1};
+//        float[] rotationMatrixX = {cosX, 0, sinX, 0,
+//                                   0, 1, 0, 0,
+//                                   -sinX, 0, cosX, 0,
+//                                   0, 0, 0, 1};
+//        Log.d("CALC", String.valueOf(pointV4[0]) + " " + String.valueOf(pointV4[1]) + " " + String.valueOf(pointV4[2]));
+//        float[] rotatedPointY = multiplyMat4ByVec4(rotationMatrixY, pointV4);
+//        Log.d("CALC", String.valueOf(rotatedPointY[0]) + " " + String.valueOf(rotatedPointY[1]) + " " + String.valueOf(rotatedPointY[2]));
+//        float[] rotatedPointXY = multiplyMat4ByVec4(rotationMatrixX, rotatedPointY);
+//        Log.d("CALC", String.valueOf(rotatedPointXY[0]) + " " + String.valueOf(rotatedPointXY[1]) + " " + String.valueOf(rotatedPointXY[2]));
+
+        return multiplyMat4ByVec4(rotationMatrixY, pointV4);
     }
 
 

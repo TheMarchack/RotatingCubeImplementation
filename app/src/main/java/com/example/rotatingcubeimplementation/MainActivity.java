@@ -1,13 +1,13 @@
 package com.example.rotatingcubeimplementation;
 
-import androidx.appcompat.app.AppCompatActivity;
-
 import android.app.ActivityManager;
 import android.content.Context;
 import android.content.pm.ConfigurationInfo;
 import android.os.Bundle;
 import android.view.WindowManager;
 import android.widget.TextView;
+
+import androidx.appcompat.app.AppCompatActivity;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -26,7 +26,6 @@ public class MainActivity extends AppCompatActivity {
 
         setContentView(R.layout.activity_main);
         openGLView = (OpenGLView) findViewById(R.id.openGLView);
-
         colorText = findViewById(R.id.colorText);
 
         // Check if the system supports OpenGL ES 2.0.
